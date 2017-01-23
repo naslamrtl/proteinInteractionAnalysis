@@ -33,33 +33,53 @@ object AnalyzeTwitters
         
         
     println("Application will Generate Output file in current directory---------FunctionCount.txt- FILE----------") 
-   
+    
+    // reading function file  
+    val file = sc.textFile(inputFile)
+                //  (pro#, function)
+    val protineFunRDD = file.map(_.split(",")).map(x=> (x(0), x(1)))  
+    // reading final scoring table 
     val file2 = sc.textFile(inputFile2)
+    // removing headers 
     val header = file2.first()
     val data = file2.filter(x => x != header)
     val pro_statusRDD = data.map(_.split(";")).map(x=> (x(0), x(15))) 
+    // filtering cancerous protein
     val pro_cancerRDD = pro_statusRDD.filter(_._2 == "cancer") 
-    
+    // joining function rdd with cancerous protine RDD
     val joinedRDD = pro_cancerRDD.join(protineFunRDD)
    
+    // maping fucntion with the protein performing that function, there will be more entries for one function     
     val fun_proRDD = joinedRDD.map(x=> (x._2._2, x._1))
  
-    // res 1 
+    // res 1 i.e group one function with all of proteins (as list) performing that function 
     val fun_proListRDD = fun_proRDD.groupByKey.map(x=> (x._1, x._2.toList))
       
     // rest 2 
-
+    // calculating the total number of protines for each function 
     val fun_cancerCount = fun_proListRDD.map(x=> (x._1, x._2.size)).sortBy(_._1)   
+    // list of distick functions 
     val distFunctions = protineFunRDD.map(x=> x._2).distinct().map(x=> (x, 0))      
+    // combining all the functions having any protein or not as its performer 
     val combinedRDD = fun_cancerCount.union(distFunctions) 
+    // sorting by function name 
     val funcSortedByFunction = combinedRDD.groupByKey.map(x=> (x._1, x._2.sum)).sortBy(_._1)
+    // sorting by number of protiens for each function 
     val funcSortedByCount = combinedRDD.groupByKey.map(x=> (x._1, x._2.sum)).sortBy(_._2, false) 
-
+ 
+         
+    // NOW calculation score for each protine based on functions performed by this protein       
     //(function, protine)
+    // mapping protineFunRDD (pro, Func)  ==>>  (Fun, protein)
     val functionProtine = protineFunRDD.map(x=> (x._2, x._1)) 
+    // joining above wiht the function scoring RDD that we calculated above, 
+    // grouped each protines with all of its function scores
+    // then we calculated count of function and sum of function score 
     val joinedProtine_functionCount = functionProtine.join(funcSortedByFunction).map(x=>(x._2) ).groupByKey.map(x => (x._1, x._2.size, x._2.sum))
-    val avgProtineFunctionScore =  joinedProtine_functionCount.map(x=> (x._1, x._2, x._3, x._3/x._2)).sortBy(_._4, false)
+    // calculating the average of the function score for each protein and sorting it in dec order 
+    val avgProtineFunctionScore = joinedProtine_functionCount.map(x=> (x._1, x._2, x._3, x._3/x._2)).sortBy(_._4, false)
     
+    // writing output files 
     val bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("FunctionCount.txt"), "UTF-8"))
     val bw2 = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("FunctionCountSorted.txt"), "UTF-8"))
     val bw3 = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("ProtineFunctionScore.txt"), "UTF-8"))
